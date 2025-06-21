@@ -1,0 +1,2168 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 视觉监控系统</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    :root {
+      --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      --danger-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+      --dark-gradient: linear-gradient(135deg, #0c0c0c 0%, #1a1a1a 100%);
+      --glass-bg: rgba(255, 255, 255, 0.05);
+      --glass-border: rgba(255, 255, 255, 0.1);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0a0a0a;
+      color: #ffffff;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      overflow-x: hidden;
+      font-feature-settings: 'liga' 1, 'kern' 1;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* 背景网格效果 */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: 
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 50px 50px;
+      pointer-events: none;
+      z-index: -1;
+    }
+    
+    #map {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      width: 100vw; height: 100vh;
+      z-index: 0;
+      filter: brightness(1.08) contrast(1.12) saturate(1.08);
+    }
+
+    /* 玻璃态设计系统 */
+    .glass-card {
+      background: rgba(255, 255, 255, 0.03);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 24px;
+      box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+
+    .glass-card-light {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 24px;
+      box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      color: #1a1a1a;
+    }
+
+    /* 侧边栏设计 */
+    .sidebar {
+      width: 27vw;
+      min-width: 320px;
+      max-width: 420px;
+      max-height: calc(100vh - 48px);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      height: 100vh;
+    }
+    .sidebar.focus-clear {
+      position: fixed;
+      z-index: 1001;
+      filter: none !important;
+      backdrop-filter: none !important;
+    }
+    /* 侧边栏内容区结构优化 */
+    .sidebar-content {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .camera-list {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      padding-bottom: 18px;
+    }
+
+    .sidebar-header {
+      padding: 32px 28px 24px;
+      text-align: center;
+    }
+
+    .sidebar-title {
+      font-size: 28px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+
+    .sidebar-subtitle {
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    /* 上传区域 */
+    .upload-zone {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 160px;
+      min-height: 180px;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 28px 24px;
+      margin-bottom: 18px;
+      border: 2px dashed rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      text-align: center;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      position: relative;
+      height: auto;
+      overflow: visible;
+    }
+    .upload-zone * {
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .upload-zone h3, .upload-zone p {
+      margin-left: auto;
+      margin-right: auto;
+      text-align: center;
+      overflow-wrap: break-word;
+      word-break: break-all;
+    }
+
+    .upload-zone::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+      transition: left 0.5s;
+    }
+
+    .upload-zone:hover {
+      border-color: rgba(102, 126, 234, 0.5);
+      background: rgba(102, 126, 234, 0.05);
+    }
+
+    .upload-zone:hover::before {
+      left: 100%;
+    }
+
+    .upload-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+      color: #667eea;
+      opacity: 0.8;
+    }
+
+    /* 按钮系统 */
+    .btn {
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      border: none;
+      position: relative;
+      overflow: hidden;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      transition: left 0.5s;
+    }
+
+    .btn:hover::before {
+      left: 100%;
+    }
+
+    .btn-primary {
+      background: #007AFF;
+      color: #fff;
+      border: none;
+      transition: background 0.2s;
+    }
+
+    .btn-primary:hover {
+      background: #0051A8;
+    }
+
+    .btn-secondary {
+      background: #F2F2F7;
+      color: #007AFF;
+      border: 1px solid #D1D1D6;
+    }
+
+    .btn-secondary:hover {
+      background: #E5E5EA;
+    }
+
+    .btn-success {
+      background: #34C759;
+      color: #fff;
+      border: none;
+    }
+
+    .btn-danger {
+      background: #FF3B30;
+      color: #fff;
+      border: none;
+    }
+    .btn-danger:hover {
+      background: #C1271A;
+    }
+
+    /* 摄像头卡片 */
+    .camera-card {
+      width: 100%;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      background: rgba(255,255,255,0.08);
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 14px 18px;
+      margin: 0;
+    }
+
+    .card-main {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 8px;
+      align-items: center;
+      width: 100%;
+    }
+
+    .camera-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent);
+      transition: left 0.5s;
+    }
+
+    .camera-card:hover {
+      transform: translateY(-4px);
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(102, 126, 234, 0.3);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .camera-card:hover::before {
+      left: 100%;
+    }
+
+    .camera-name {
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 0;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .camera-location {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: 12px;
+    }
+
+    .camera-status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-online {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .status-offline {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .status-maintenance {
+      background: rgba(245, 158, 11, 0.2);
+      color: #f59e0b;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    /* 右上角控制面板 */
+    .control-panel {
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      z-index: 30;
+      display: flex;
+      gap: 16px;
+    }
+
+    .control-btn {
+      padding: 14px 20px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      color: rgba(255, 255, 255, 0.9);
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .control-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(102, 126, 234, 0.3);
+      transform: translateY(-2px);
+    }
+
+    /* 模态框设计 */
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(0.5px);
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .modal-content {
+      width: 100%;
+      max-width: 800px;
+      max-height: 90vh;
+      background: rgba(26, 26, 26, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .modal-header {
+      padding: 32px 32px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    }
+
+    .modal-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: #ffffff;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    .modal-body {
+      padding: 32px;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+
+    /* 输入框设计 */
+    .input-field {
+      width: 100%;
+      padding: 16px 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+
+    .input-field:focus {
+      outline: none;
+      border-color: rgba(102, 126, 234, 0.5);
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .input-field::placeholder {
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.8);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* 滑块设计 */
+    .slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      outline: none;
+    }
+
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      background: var(--primary-gradient);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      background: var(--primary-gradient);
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    /* 抽屉设计 */
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 400px;
+      height: 100vh;
+      background: rgba(26, 26, 26, 0.95);
+      backdrop-filter: blur(20px);
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+      z-index: 40;
+      overflow-y: auto;
+    }
+
+    .drawer.open {
+      transform: translateX(0);
+    }
+
+    .drawer-header {
+      padding: 32px 24px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    }
+
+    .drawer-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #ffffff;
+      margin: 0;
+    }
+
+    .drawer-content {
+      padding: 24px;
+    }
+
+    /* 关闭按钮 */
+    .close-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      border-radius: 50%;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+
+    .close-btn:hover {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      transform: rotate(90deg);
+    }
+
+    /* 预览区域 */
+    .preview-area {
+      width: 100%;
+      height: 120px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 2px dashed rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .preview-area:hover {
+      border-color: rgba(102, 126, 234, 0.3);
+      background: rgba(102, 126, 234, 0.05);
+    }
+
+    .preview-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 8px;
+    }
+
+    /* 结果框样式 */
+    .result-box {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px;
+      min-height: 100px;
+      white-space: pre-wrap;
+      font-family: 'Inter', monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    /* 响应式设计 */
+    @media (max-width: 1200px) {
+      .sidebar {
+        width: 320px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        position: absolute;
+        width: calc(100vw - 48px);
+        max-width: 360px;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      .control-panel {
+        top: 20px;
+        right: 20px;
+        gap: 12px;
+      }
+
+      .control-btn {
+        padding: 12px 16px;
+        font-size: 13px;
+      }
+
+      .drawer {
+        width: 100vw;
+      }
+    }
+
+    /* 滚动条样式 */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    /* 动画效果 */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .animate-fade-in-up {
+      animation: fadeInUp 0.6s ease-out;
+    }
+
+    .animate-pulse {
+      animation: pulse 2s infinite;
+    }
+
+    /* 加载状态 */
+    .loading {
+      position: relative;
+    }
+
+    .loading::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 20px;
+      height: 20px;
+      margin: -10px 0 0 -10px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-top: 2px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .card-actions .btn {
+      flex: 1;
+      height: 40px;
+      border-radius: 12px;
+      font-size: 15px;
+      background: #007AFF !important;
+      color: #fff !important;
+      box-shadow: none !important;
+    }
+
+    .card-actions .btn-danger {
+      background: #FF3B30 !important;
+      color: #fff !important;
+    }
+
+    .card-actions .camera-status {
+      margin-left: 16px;
+      flex-shrink: 0;
+    }
+
+    /* 基础markdown美化 */
+    .result-box h1, .result-box h2, .result-box h3 {
+      color: #007AFF;
+      font-weight: 800;
+      margin: 12px 0 8px 0;
+    }
+    .result-box ul, .result-box ol {
+      margin: 8px 0 8px 18px;
+      padding-left: 18px;
+    }
+    .result-box li {
+      margin-bottom: 4px;
+      line-height: 1.7;
+    }
+    .result-box strong {
+      color: #222;
+      font-weight: 700;
+    }
+    .result-box table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 10px 0;
+      background: rgba(255,255,255,0.95);
+      color: #222;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .result-box th, .result-box td {
+      border: 1px solid #e5e7eb;
+      padding: 6px 12px;
+      text-align: left;
+    }
+    .result-box blockquote {
+      border-left: 4px solid #007AFF;
+      background: rgba(0,122,255,0.06);
+      margin: 8px 0;
+      padding: 8px 16px;
+      color: #222;
+      border-radius: 6px;
+    }
+    .result-box code {
+      background: #f4f4f4;
+      color: #007AFF;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 13px;
+    }
+    .result-box pre code {
+      display: block;
+      padding: 12px;
+      background: #f4f4f4;
+      color: #007AFF;
+      border-radius: 8px;
+      font-size: 13px;
+      overflow-x: auto;
+    }
+
+    .result-box, .result-box * {
+      color: #fff !important;
+    }
+    .result-box table {
+      background: rgba(30,32,40,0.92);
+      color: #fff !important;
+    }
+    .result-box th, .result-box td {
+      color: #fff !important;
+      border: 1px solid #3a3a3a;
+    }
+    .result-box blockquote {
+      color: #fff !important;
+    }
+    .result-box code, .result-box pre code {
+      color: #fff !important;
+      background: #232946;
+    }
+    .result-box ul, .result-box ol {
+      list-style-type: disc;
+      color: #fff !important;
+    }
+    .result-box ul li::marker,
+    .result-box ol li::marker {
+      color: #fff !important;
+      font-size: 1.1em;
+    }
+    .result-box th, .result-box td {
+      border: 1px solid #bfc4cc !important;
+    }
+    .result-box blockquote {
+      border-left: 4px solid #fff !important;
+    }
+
+    .geo-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 12px;
+      margin: 10px 0 0 0;
+    }
+    .geo-tag {
+      background: rgba(0,122,255,0.12);
+      color: #fff;
+      border-radius: 8px;
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 500;
+      border: 1px solid #007AFF33;
+      box-shadow: 0 2px 8px #0002;
+      white-space: nowrap;
+      margin-bottom: 2px;
+    }
+    .geo-tag b {
+      color: #60a5fa;
+      font-weight: 700;
+    }
+  </style>
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-image/leaflet-image.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+  <!-- 摄像头icon高亮样式 -->
+  <style>
+    .camera-marker-glow img, .camera-marker-glow svg { filter: brightness(1.25) drop-shadow(0 0 10px #007affcc) drop-shadow(0 0 2px #fff); }
+  </style>
+</head>
+<body>
+  <!-- 地图背景 -->
+  <div id="map"></div>
+  <!-- 地图深色遮罩 -->
+  <div id="map-mask" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100vw; height: 100vh; background: rgba(10,10,20,0.18); z-index: 1; pointer-events: none; transition: opacity 0.3s;"></div>
+
+  <!-- 侧边栏 -->
+  <aside class="sidebar glass-card">
+    <div class="sidebar-header">
+      <h1 class="sidebar-title" style="font-size:2.2rem;font-weight:900;letter-spacing:-0.03em;color:#ffffff;background:none;-webkit-text-fill-color:#ffffff;-webkit-background-clip:unset;">VISION+</h1>
+      <p class="sidebar-subtitle" style="font-size:1.18rem;font-weight:700;color:rgba(255,255,255,0.82);margin-top:8px;">点位场景AI识别demo</p>
+    </div>
+    <div class="sidebar-content">
+      <!-- 上传区域 -->
+      <div class="upload-zone" id="upload-zone">
+        <svg class="upload-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+        </svg>
+        <h3 style="color: rgba(255,255,255,0.95); font-size: 20px; font-weight: 800; margin: 0 0 8px 0;">👀上传数据文件</h3>
+        <p style="color: rgba(255,255,255,0.6); font-size: 13px; margin: 0 0 20px 0;">支持 Excel (.xlsx/.xls) 或 CSV 格式</p>
+        <div style="display: flex; gap: 12px; justify-content: center;">
+          <input type="file" id="excel-upload" accept=".xlsx,.xls" class="hidden" />
+          <button onclick="document.getElementById('excel-upload').click()" class="btn btn-primary" style="padding: 8px 16px; font-size: 12px;">
+            Excel
+          </button>
+          <input type="file" id="csv-upload" accept=".csv" class="hidden" />
+          <button onclick="document.getElementById('csv-upload').click()" class="btn btn-secondary" style="padding: 8px 16px; font-size: 12px;">
+            CSV
+          </button>
+        </div>
+      </div>
+      <!-- 摄像头列表 -->
+      <h3 style="color: rgba(255,255,255,0.8); font-size: 14px; font-weight: 600; margin: 0 0 16px 0; text-transform: uppercase; letter-spacing: 0.5px; padding: 0 8px;">摄像头列表</h3>
+      <div id="camera-list" class="camera-list" style="padding-right: 8px;"></div>
+    </div>
+  </aside>
+
+  <!-- 右上角控制面板 -->
+  <div class="control-panel">
+    <button id="toggle-analysis" class="control-btn">
+      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+      </svg>
+      AI 分析
+    </button>
+    <button onclick="openAddCameraModal()" class="control-btn">
+      <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+      </svg>
+      添加摄像头
+    </button>
+  </div>
+
+  <!-- AI分析模态框 -->
+  <div id="ai-modal" class="modal hidden">
+    <div class="modal-content" id="modal-content">
+      <button onclick="closeModal()" class="close-btn">×</button>
+      
+      <div class="modal-header">
+        <h2 class="modal-title">AI 摄像头分析</h2>
+      </div>
+
+      <div class="modal-body">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+          <div>
+            <label class="label">摄像头名称</label>
+            <input type="text" id="camera-name" class="input-field" placeholder="输入摄像头名称" />
+          </div>
+          <div>
+            <label class="label">国标编码</label>
+            <input type="text" id="camera-code" class="input-field" placeholder="可选" />
+          </div>
+        </div>
+        <div style="margin-bottom: 24px;">
+          <label class="label">摄像头画面</label>
+          <div style="display: flex; gap: 24px; align-items: flex-start;">
+            <div class="preview-area" style="width: 200px; height: 120px; cursor: pointer;" onclick="document.getElementById('camera-upload').click()">
+              <input type="file" id="camera-upload" accept="image/*" class="hidden" />
+              <div id="camera-placeholder" style="text-align: center;">
+                <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: rgba(255,255,255,0.4); margin-bottom: 8px;">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+                <span style="color: rgba(255,255,255,0.4); font-size: 12px;">点击上传</span>
+              </div>
+              <img id="camera-preview" class="preview-image hidden" />
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+              <button id="import-camera-btn" class="btn btn-secondary" style="width: 100%; height: 48px; display: flex; align-items: center; justify-content: center;">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right: 8px;">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                平台导入画面
+              </button>
+              <p style="color: rgba(255,255,255,0.4); font-size: 12px; margin: 0;">可通过国标编码自动获取画面</p>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+          <label class="label">地图区域设置</label>
+          <div style="display: flex; gap: 24px; align-items: flex-start;">
+            <div class="preview-area" style="width: 200px; height: 120px; position: relative;">
+              <canvas id="map-canvas" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;"></canvas>
+              <img id="map-preview" class="preview-image hidden" />
+              <input type="file" id="map-upload" accept="image/*" class="hidden" />
+            </div>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+              <div style="display: flex; gap: 12px;">
+                <button id="screenshot-btn" class="btn btn-secondary" style="flex: 1; height: 48px;">生成地图截图</button>
+                <button onclick="document.getElementById('map-upload').click()" class="btn btn-primary" style="flex: 1; height: 48px;">上传地图</button>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px;">
+                <div>
+                  <label class="label" style="font-size: 11px;">视野角度</label>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="range" id="angle-slider" min="30" max="120" value="60" class="slider" style="flex: 1;" />
+                    <span id="angle-value" style="color: rgba(255,255,255,0.6); font-size: 12px; min-width: 35px;">60°</span>
+                  </div>
+                </div>
+                <div>
+                  <label class="label" style="font-size: 11px;">视野距离</label>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="range" id="radius-slider" min="20" max="100" value="30" class="slider" style="flex: 1;" />
+                    <span id="radius-value" style="color: #e0e6ff; font-size: 14px; font-weight: 700; min-width: 35px;">30m</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-bottom: 24px;">
+            <label class="label">分析模型</label>
+            <select id="ai-model-select" class="input-field">
+              <option value="qwen">Qwen2.5-VL-32B-Instruct（默认）</option>
+              <option value="stepfun">阶跃星辰 step-1o-turbo-vision</option>
+            </select>
+          </div>
+          <div style="margin-bottom: 24px;">
+            <label class="label">分析提示词</label>
+            <textarea id="prompt-text" class="input-field" style="min-height: 120px; resize: vertical; font-family: 'Inter', monospace; font-size: 13px;" placeholder="输入AI分析提示词...">你是一位专业的城市治理AI图像分析师。请基于以下信息，结合摄像头画面和平面图的元素，判断摄像头所在区域类型、易发事件和场所类型，并给出简要分析。
+  
+  【摄像头信息】
+  - 名称：{name}
+  - 国标编码：{code}
+  - 区域：{area}
+  - 片区：{section}
+  - 建筑物：{building}
+  - 楼层：{floor}
+  - 场所类型：{placeType}
+  - 相对场所位置信息：{relativePlace}
+  - 具体场所位置信息：{specificPlace}
+  - 细节备注：{detail}
+  
+  【分析任务】
+  1. 判断该摄像头所在的区域类型（如道路、停车场、地铁口、公交站等）。
+  2. 结合地理标签和画面，推测易发城市治理事件（如违停、拥堵、人员聚集等）。
+  3. 简要说明场所类型和监控重点。
+  
+  【输出格式】
+  - 区域类型：
+  - 易发事件：
+  - 场所类型判断：
+  - 分析说明：
+  （请输出不超过300字）</textarea>
+        <div style="margin-bottom: 32px;">
+          <label class="label">AI 分析结果</label>
+          <div id="result-box" class="result-box">点击"开始分析"按钮获取AI分析结果...</div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 16px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.1);">
+          <button onclick="closeModal()" class="btn btn-secondary">取消</button>
+          <button id="save-btn" class="btn btn-success">保存摄像头</button>
+          <button id="analyze-btn" class="btn btn-primary">开始分析</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 添加摄像头模态框 -->
+  <div id="add-camera-modal" class="modal hidden">
+    <div class="modal-content" style="max-width: 500px;">
+      <button onclick="closeAddCameraModal()" class="close-btn">×</button>
+      
+      <div class="modal-header">
+        <h2 class="modal-title">添加新摄像头</h2>
+      </div>
+
+      <div class="modal-body">
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <div><label class="label">摄像头名称</label><input id="add-name" type="text" class="input-field" placeholder="输入摄像头名称" /></div>
+          <div><label class="label">国标编码（可选）</label><input id="add-code" type="text" class="input-field" placeholder="输入国标编码" /></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div><label class="label">经度</label><input id="add-lng" type="number" class="input-field" placeholder="如: 114.213" step="any" /></div>
+            <div><label class="label">纬度</label><input id="add-lat" type="number" class="input-field" placeholder="如: 22.699" step="any" /></div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div><label class="label">区域</label><input id="add-area" type="text" class="input-field" placeholder="如: 大运中心区域" /></div>
+            <div><label class="label">片区</label><input id="add-section" type="text" class="input-field" placeholder="如: 周边道路片区" /></div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div><label class="label">建筑物</label><input id="add-building" type="text" class="input-field" placeholder="如: 龙飞大道周边" /></div>
+            <div><label class="label">楼层</label><input id="add-floor" type="text" class="input-field" placeholder="如: 大运中心体育馆..." /></div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div><label class="label">场所类型</label><input id="add-placeType" type="text" class="input-field" placeholder="如: 地上停车场" /></div>
+            <div><label class="label">相对场所位置信息</label><input id="add-relativePlace" type="text" class="input-field" placeholder="如: D口" /></div>
+          </div>
+          <div><label class="label">具体场所位置信息</label><input id="add-specificPlace" type="text" class="input-field" placeholder="如: 出入口" /></div>
+          <div><label class="label">细节备注</label><input id="add-detail" type="text" class="input-field" placeholder="如: 备注信息" /></div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 16px; margin-top: 32px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.1);">
+          <button onclick="closeAddCameraModal()" class="btn btn-secondary">取消</button>
+          <button onclick="addCameraByForm()" class="btn btn-primary">添加摄像头</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI分析抽屉 -->
+  <div id="ai-drawer" class="drawer">
+    <div class="drawer-header">
+      <h2 class="drawer-title">AI 分析结果</h2>
+      <button id="close-analysis" class="close-btn" style="position: absolute; top: 20px; right: 20px;">×</button>
+    </div>
+    <div class="drawer-content">
+      <div id="drawer-result-box" class="result-box" style="min-height: calc(100vh - 200px);">
+        请选择摄像头并点击分析按钮后查看结果...
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 全局变量
+    let cameraList = [
+      {
+        code: '44030783001320002230',
+        name: '龙飞大道体育场D口停车场出入口',
+        area: '大运中心区域',
+        section: '周边道路片区',
+        building: '龙飞大道周边',
+        floor: '大运中心体育馆龙飞大道入口段-青春路段',
+        placeType: '地上停车场',
+        relativePlace: 'D口',
+        specificPlace: '出入口',
+        detail: '',
+        realName: '',
+        type: '枪',
+        lng: 114.211253,
+        lat: 22.695207,
+        status: 'online'
+      },
+      {
+        code: '44030783001320002229',
+        name: '龙飞大道体育场充电桩外公交站',
+        area: '大运中心区域',
+        section: '周边道路片区',
+        building: '龙飞大道周边',
+        floor: '大运中心体育馆龙飞大道入口段-青春路段',
+        placeType: '港中大深圳校区公交站台',
+        relativePlace: '充电桩外',
+        specificPlace: '西',
+        detail: '香港中文大学(深圳)对面',
+        realName: '',
+        type: '球',
+        lng: 114.212078,
+        lat: 22.694367,
+        status: 'online'
+      },
+      {
+        code: '44030783001320002136',
+        name: '龙飞大道体育场充电桩停车场2',
+        area: '大运中心区域',
+        section: '周边道路片区',
+        building: '龙飞大道周边',
+        floor: '大运中心体育馆龙飞大道入口段-青春路段',
+        placeType: '地上停车场',
+        relativePlace: '充电桩',
+        specificPlace: '靠湖边',
+        detail: '',
+        realName: '',
+        type: '枪',
+        lng: 114.212507,
+        lat: 22.694162,
+        status: 'online'
+      },
+      {
+        code: '44030783001320002135',
+        name: '龙飞大道充电桩停车场1',
+        area: '大运中心区域',
+        section: '周边道路片区',
+        building: '龙飞大道周边',
+        floor: '大运中心体育馆龙飞大道入口段-青春路段',
+        placeType: '地上停车场',
+        relativePlace: '充电桩',
+        specificPlace: '靠湖边',
+        detail: '',
+        realName: '',
+        type: '球',
+        lng: 114.212550,
+        lat: 22.694181,
+        status: 'online'
+      },
+      {
+        code: '44030783001320002228',
+        name: '龙翔大道往龙飞大道拐弯处',
+        area: '大运中心区域',
+        section: '周边道路片区',
+        building: '龙翔大道周边',
+        floor: '大运中心体育馆南广场-龙飞大道段',
+        placeType: '人行道',
+        relativePlace: '拐角处',
+        specificPlace: '南',
+        detail: '',
+        realName: '',
+        type: '球',
+        lng: 114.213011,
+        lat: 22.694105,
+        status: 'online'
+      },
+      {
+        code: '44030783001320003007',
+        name: '云天励飞_大运城所_大运中心公交站',
+        area: '大运中心区域',
+        section: '周边道路片区',
+        building: '大运路周边',
+        floor: '大运路-麦当劳段',
+        placeType: '大运中心公交站台',
+        relativePlace: '南广场',
+        specificPlace: '出入口',
+        detail: '',
+        realName: '',
+        type: '枪',
+        lng: 114.214495,
+        lat: 22.695675,
+        status: 'online'
+      },
+      {
+        code: '44030783001320002682',
+        name: '（人像）龙翔大道人行地道B出入口',
+        area: '大运中心区域',
+        section: '周边道路片区',
+        building: '龙翔大道周边',
+        floor: '大运中心体育馆南广场-龙飞大道段',
+        placeType: '地上停车场',
+        relativePlace: 'B出入口',
+        specificPlace: '',
+        detail: '',
+        realName: '',
+        type: '枪',
+        lng: 114.213554,
+        lat: 22.694840,
+        status: 'online'
+      },
+      {
+        code: '44030783001320002227',
+        name: '龙翔大道体育场充电桩停车场入口',
+        area: '大运中心区域',
+        section: '周边道路片区',
+        building: '龙翔大道周边',
+        floor: '大运中心体育馆南广场-龙飞大道段',
+        placeType: '地上停车场',
+        relativePlace: '充电桩',
+        specificPlace: '龙翔大道入口',
+        detail: '',
+        realName: '',
+        type: '球',
+        lng: 114.213529,
+        lat: 22.694785,
+        status: 'online'
+      },
+      {
+        code: '44030783001320002225',
+        name: '黄阁路大运中心地铁站D出口1',
+        area: '大运中心区域',
+        section: '周边道路片区',
+        building: '大运路周边',
+        floor: '大运路-麦当劳段',
+        placeType: '地铁口',
+        relativePlace: 'D口',
+        specificPlace: '出入口1',
+        detail: '可步行至演唱会场馆内场d口、看台、主席台包厢和东西包厢（演唱会重要点位）',
+        realName: '',
+        type: '枪',
+        lng: 114.215909,
+        lat: 22.697343,
+        status: 'online'
+      }
+    ];
+    let map;
+    let viewCone = null;
+    let areaBox = null;
+    let currentCamera = null;
+    let markers = [];
+
+    // 摄像头图标
+    const cameraIcon = L.icon({
+      iconUrl: 'data:image/svg+xml;utf8,<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><ellipse cx="24" cy="40" rx="8" ry="3" fill="%23007AFF" opacity="0.18"/><path d="M24 6C16.82 6 11 11.82 11 19C11 28.25 22.13 40.13 23.13 41.18C23.6 41.68 24.4 41.68 24.87 41.18C25.87 40.13 37 28.25 37 19C37 11.82 31.18 6 24 6ZM24 24C21.24 24 19 21.76 19 19C19 16.24 21.24 14 24 14C26.76 14 29 16.24 29 19C29 21.76 26.76 24 24 24Z" fill="%23007AFF"/><circle cx="24" cy="19" r="5" fill="white"/><circle cx="24" cy="19" r="3" fill="%23007AFF"/></svg>',
+      iconSize: [48, 48],
+      iconAnchor: [24, 48],
+      popupAnchor: [0, -48],
+      className: 'camera-marker camera-marker-glow'
+    });
+
+    // 初始化地图
+    function initMap() {
+      map = L.map('map').setView([22.699, 114.213], 16);
+      L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        maxZoom: 20,
+        attribution: ''
+      }).addTo(map);
+    }
+
+    // 更新摄像头列表显示
+    function updateCameraList() {
+      const container = document.getElementById('camera-list');
+      container.innerHTML = '';
+
+      if (cameraList.length === 0) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 40px 20px; color: rgba(255,255,255,0.4);">
+            <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin: 0 auto 16px; opacity: 0.5;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+            </svg>
+            <p style="margin: 0; font-size: 14px;">暂无摄像头数据</p>
+            <p style="margin: 8px 0 0 0; font-size: 12px;">请上传Excel或CSV文件</p>
+          </div>
+        `;
+        return;
+      }
+
+      cameraList.forEach((cam, index) => {
+        const div = document.createElement('div');
+        div.className = 'camera-card animate-fade-in-up';
+        div.onclick = () => focusCameraOnMap(index);
+        div.innerHTML = `
+          <div class="card-main">
+            <div class="camera-name">${cam.name}</div>
+            <span class="camera-status ${
+              cam.status === 'online' ? 'status-online' :
+              cam.status === 'offline' ? 'status-offline' :
+              'status-maintenance'
+            }">${
+              cam.status === 'online' ? '在线' :
+              cam.status === 'offline' ? '离线' : '维护'
+            }</span>
+          </div>
+          <div class="camera-location" style="margin-bottom:2px;">
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display: inline-block; margin-right: 4px;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 12.414a4 4 0 10-1.414 1.414l4.243 4.243a1 1 0 001.414-1.414z"></path>
+            </svg>
+            ${cam.lat.toFixed(6)}, ${cam.lng.toFixed(6)}
+          </div>
+          <div class="card-actions">
+            <button onclick="editCamera(${index}); event.stopPropagation();" class="btn btn-primary">编辑</button>
+            <button onclick="deleteCamera(${index}); event.stopPropagation();" class="btn btn-danger">删除</button>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // 更新地图标记
+    function updateMapMarkers() {
+      markers.forEach(marker => map.removeLayer(marker));
+      markers = [];
+
+      cameraList.forEach((cam, index) => {
+        const marker = L.marker([cam.lat, cam.lng], { icon: cameraIcon })
+          .addTo(map)
+          .bindPopup(`
+            <div style="color: #1a1a1a; font-weight: 600;">${cam.name}</div>
+            <div style="color: #666; font-size: 12px; margin-top: 4px;">${cam.lat.toFixed(6)}, ${cam.lng.toFixed(6)}</div>
+          `)
+          .on('click', () => editCamera(index));
+        // 鼠标hover时高亮显示矩形区域
+        marker.on('mouseover', () => {
+          if (window.markerHoverBox) map.removeLayer(window.markerHoverBox);
+          if (window.markerGridLines) { window.markerGridLines.forEach(l=>map.removeLayer(l)); window.markerGridLines = null; }
+          const bounds = getBounds30m(cam.lat, cam.lng);
+          window.markerHoverBox = L.rectangle(bounds, {
+            color: "#fff",
+            fillColor: "#fff",
+            weight: 3,
+            fillOpacity: 0.10,
+            opacity: 1,
+            dashArray: "8,6"
+          }).addTo(map);
+          // 计算四个边中点，向外延伸灰色矢量线
+          const ne = bounds.getNorthEast();
+          const sw = bounds.getSouthWest();
+          const nw = bounds.getNorthWest();
+          const se = bounds.getSouthEast();
+          // 计算中点
+          const midTop = L.latLng(ne.lat, (ne.lng + nw.lng) / 2);
+          const midBottom = L.latLng(sw.lat, (sw.lng + se.lng) / 2);
+          const midLeft = L.latLng((nw.lat + sw.lat) / 2, nw.lng);
+          const midRight = L.latLng((ne.lat + se.lat) / 2, ne.lng);
+          // 计算延伸点（大约40px的地理距离，按当前zoom动态计算）
+          const pxLen = 40;
+          const mapCRS = map.options.crs || L.CRS.EPSG3857;
+          function extendFrom(latlng, dx, dy) {
+            const p = map.latLngToLayerPoint(latlng);
+            const p2 = L.point(p.x + dx, p.y + dy);
+            return map.layerPointToLatLng(p2);
+          }
+          // 上、下、左、右
+          const extTop = extendFrom(midTop, 0, -pxLen);
+          const extBottom = extendFrom(midBottom, 0, pxLen);
+          const extLeft = extendFrom(midLeft, -pxLen, 0);
+          const extRight = extendFrom(midRight, pxLen, 0);
+          // 绘制四条线
+          window.markerGridLines = [
+            L.polyline([midTop, extTop], {color:'#bfc4cc',weight:2,opacity:0.7,dashArray:'0'}).addTo(map),
+            L.polyline([midBottom, extBottom], {color:'#bfc4cc',weight:2,opacity:0.7,dashArray:'0'}).addTo(map),
+            L.polyline([midLeft, extLeft], {color:'#bfc4cc',weight:2,opacity:0.7,dashArray:'0'}).addTo(map),
+            L.polyline([midRight, extRight], {color:'#bfc4cc',weight:2,opacity:0.7,dashArray:'0'}).addTo(map)
+          ];
+          // 在区域中心添加Area:30x30标签
+          const nwLabel = bounds.getNorthWest();
+          window.markerAreaLabel = L.marker(nwLabel, {
+            icon: L.divIcon({
+              className: '',
+              html: `<div style="background:rgba(30,32,40,0.82);color:#fff;border-radius:8px;padding:2px 10px;font-size:13px;font-weight:600;box-shadow:0 2px 8px #0003;letter-spacing:0.04em;backdrop-filter:blur(2px);border:1.5px solid #fff;">Area:30×30</div>`
+            }),
+            interactive: false
+          }).addTo(map);
+        });
+        marker.on('mouseout', () => {
+          if (window.markerHoverBox) {
+            map.removeLayer(window.markerHoverBox);
+            window.markerHoverBox = null;
+          }
+          if (window.markerGridLines) {
+            window.markerGridLines.forEach(l=>map.removeLayer(l));
+            window.markerGridLines = null;
+          }
+          if (window.markerAreaLabel) {
+            map.removeLayer(window.markerAreaLabel);
+            window.markerAreaLabel = null;
+          }
+        });
+        markers.push(marker);
+      });
+    }
+
+    // 地图定位到摄像头
+    function focusCameraOnMap(index) {
+      const cam = cameraList[index];
+      if (!cam) return;
+      map.setView([cam.lat, cam.lng], 18, { animate: true, duration: 1 });
+      if (markers[index]) {
+        markers[index].openPopup();
+      }
+    }
+
+    // 删除摄像头
+    function deleteCamera(index) {
+      if (confirm('确定要删除这个摄像头吗？')) {
+        cameraList.splice(index, 1);
+        updateCameraList();
+        updateMapMarkers();
+      }
+    }
+
+    // 编辑摄像头
+    function editCamera(index) {
+      currentCamera = { ...cameraList[index], index };
+      openModal();
+    }
+
+    // 地图相关函数
+    function getBounds30m(lat, lng) {
+      const latDiff = 30 / 111111;
+      const lngDiff = 30 / (111111 * Math.cos(lat * Math.PI / 180));
+      return L.latLngBounds([lat - latDiff, lng - lngDiff], [lat + latDiff, lng + lngDiff]);
+    }
+
+    function drawViewCone(lat, lng, heading, angle, radius) {
+      if (viewCone) map.removeLayer(viewCone);
+      const points = [[lat, lng]];
+      for (let a = -angle / 2; a <= angle / 2; a += 3) {
+        const rad = (heading + a) * Math.PI / 180;
+        const dx = radius * Math.cos(rad) / 111111;
+        const dy = radius * Math.sin(rad) / 111111;
+        points.push([lat + dy, lng + dx]);
+      }
+      // 先不addTo，返回polygon对象
+      const cone = L.polygon(points, {
+        color: "#fff",
+        fillColor: "#fff",
+        fillOpacity: 0.35,
+        weight: 2,
+        opacity: 0.9
+      });
+      viewCone = cone;
+      // 先不addTo，交由外部控制顺序
+      cone.addTo(map);
+      if (areaBox) {
+        areaBox.bringToBack(); // 保证矩形在下
+        cone.bringToFront();   // 扇形在上
+      }
+      return points;
+    }
+
+    function drawBoundsBox(bounds) {
+      if (areaBox) map.removeLayer(areaBox);
+      areaBox = L.rectangle(bounds, {
+        color: "#fff",
+        fillColor: "#60a5fa",
+        weight: 4,
+        fillOpacity: 0.18,
+        opacity: 1,
+        dashArray: "6,4"
+      }).addTo(map);
+      // 额外加一个半透明白色内阴影效果（通过CSS hack）
+      if (areaBox._path) {
+        areaBox._path.style.filter = "drop-shadow(0 0 8px #fff8) drop-shadow(0 0 2px #60a5fa)";
+      }
+    }
+
+    function getCombinedBounds(points, bounds) {
+      const all = [...points, bounds.getNorthWest(), bounds.getSouthEast()];
+      return L.latLngBounds(all);
+    }
+
+    function screenshotArea(bounds, callback) {
+      const tempDiv = document.createElement("div");
+      tempDiv.style.width = "512px";
+      tempDiv.style.height = "512px";
+      tempDiv.style.position = "absolute";
+      tempDiv.style.top = "-1000px";
+      document.body.appendChild(tempDiv);
+
+      const tempMap = L.map(tempDiv, {
+        zoomControl: false,
+        attributionControl: false
+      }).setView(bounds.getCenter(), 20);
+
+      const layer = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        maxZoom: 20
+      }).addTo(tempMap);
+
+      tempMap.fitBounds(bounds);
+
+      layer.on("load", () => {
+        setTimeout(() => {
+          leafletImage(tempMap, function (err, canvas) {
+            callback(canvas);
+            tempMap.remove();
+            document.body.removeChild(tempDiv);
+          });
+        }, 500);
+      });
+    }
+
+    // 更新地图截图
+    function updateMapScreenshot(bounds) {
+      screenshotArea(bounds, function(canvas) {
+        const mapCanvas = document.getElementById("map-canvas");
+        mapCanvas.width = canvas.width;
+        mapCanvas.height = canvas.height;
+        const ctx = mapCanvas.getContext("2d");
+        ctx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+        ctx.drawImage(canvas, 0, 0);
+      });
+    }
+
+    // 遮罩控制函数
+    function showMapMask() {
+      document.getElementById('map-mask').style.opacity = '1';
+    }
+    function hideMapMask() {
+      document.getElementById('map-mask').style.opacity = '0';
+    }
+
+    // 模态框控制
+    function openModal() {
+      if (!currentCamera) return;
+      document.getElementById('camera-name').value = currentCamera.name || '';
+      document.getElementById('camera-code').value = currentCamera.code || '';
+      document.getElementById('ai-modal').classList.remove('hidden');
+      // 侧边栏聚焦清晰
+      document.querySelector('.sidebar').classList.add('focus-clear');
+      const bounds = getBounds30m(currentCamera.lat, currentCamera.lng);
+      drawBoundsBox(bounds);
+      // 展示地理标签信息
+      let geoInfoHtml = `<div style="margin:16px 0 8px 0;padding:12px 16px;background:rgba(102,126,234,0.07);border-radius:12px;">
+        <div style="font-weight:700;color:#667eea;margin-bottom:6px;">地理标签信息</div>
+        <div class="geo-tags">
+          <span class="geo-tag"><b>区域：</b>${currentCamera.area || '-'}</span>
+          <span class="geo-tag"><b>片区：</b>${currentCamera.section || '-'}</span>
+          <span class="geo-tag"><b>建筑物：</b>${currentCamera.building || '-'}</span>
+          <span class="geo-tag"><b>楼层：</b>${currentCamera.floor || '-'}</span>
+          <span class="geo-tag"><b>场所类型：</b>${currentCamera.placeType || '-'}</span>
+          <span class="geo-tag"><b>相对场所位置信息：</b>${currentCamera.relativePlace || '-'}</span>
+          <span class="geo-tag"><b>具体场所位置信息：</b>${currentCamera.specificPlace || '-'}</span>
+          <span class="geo-tag"><b>细节备注：</b>${currentCamera.detail || '-'}</span>
+        </div>
+      </div>`;
+      // 插入到弹窗内容合适位置（如摄像头名称下方）
+      const modalBody = document.querySelector('.modal-body');
+      if (modalBody && !document.getElementById('geo-info-box')) {
+        const geoDiv = document.createElement('div');
+        geoDiv.id = 'geo-info-box';
+        geoDiv.innerHTML = geoInfoHtml;
+        modalBody.insertBefore(geoDiv, modalBody.children[1]);
+      } else if (modalBody && document.getElementById('geo-info-box')) {
+        document.getElementById('geo-info-box').innerHTML = geoInfoHtml;
+      }
+      // 动态填充分析提示词
+      const promptTemplate = `你是一位专业的城市治理AI图像分析师。请基于以下信息，结合摄像头画面和平面图的元素，判断摄像头所在区域类型、易发事件和场所类型，并给出简要分析。
+  
+  【摄像头信息】
+  - 名称：{name}
+  - 国标编码：{code}
+  - 区域：{area}
+  - 片区：{section}
+  - 建筑物：{building}
+  - 楼层：{floor}
+  - 场所类型：{placeType}
+  - 相对场所位置信息：{relativePlace}
+  - 具体场所位置信息：{specificPlace}
+  - 细节备注：{detail}
+  
+  【分析任务】
+  1. 判断该摄像头所在的区域类型（如道路、停车场、地铁口、公交站等）。
+  2. 结合地理标签和画面，推测易发城市治理事件（如违停、拥堵、人员聚集等）。
+  3. 简要说明场所类型和监控重点。
+  
+  【输出格式】
+  - 区域类型：
+  - 易发事件：
+  - 场所类型判断：
+  - 分析说明：
+  （请输出不超过300字）`;
+      const prompt = promptTemplate
+        .replace('{name}', currentCamera.name || '')
+        .replace('{code}', currentCamera.code || '')
+        .replace('{area}', currentCamera.area || '')
+        .replace('{section}', currentCamera.section || '')
+        .replace('{building}', currentCamera.building || '')
+        .replace('{floor}', currentCamera.floor || '')
+        .replace('{placeType}', currentCamera.placeType || '')
+        .replace('{relativePlace}', currentCamera.relativePlace || '')
+        .replace('{specificPlace}', currentCamera.specificPlace || '')
+        .replace('{detail}', currentCamera.detail || '');
+      document.getElementById('prompt-text').value = prompt;
+      // 弹窗聚焦时隐藏遮罩
+      hideMapMask();
+    }
+
+    function closeModal() {
+      document.getElementById("ai-modal").classList.add("hidden");
+      document.getElementById("camera-upload").value = "";
+      document.getElementById("camera-preview").classList.add("hidden");
+      document.getElementById("camera-placeholder").style.display = "block";
+      document.getElementById("result-box").textContent = '点击"开始分析"按钮获取AI分析结果...';
+      // 取消侧边栏聚焦清晰
+      document.querySelector('.sidebar').classList.remove('focus-clear');
+      if (viewCone) map.removeLayer(viewCone);
+      if (areaBox) map.removeLayer(areaBox);
+      viewCone = null;
+      areaBox = null;
+      currentCamera = null;
+      // 关闭弹窗时恢复遮罩
+      showMapMask();
+    }
+
+    function openAddCameraModal() {
+      document.getElementById('add-camera-modal').classList.remove('hidden');
+      hideMapMask();
+    }
+
+    function closeAddCameraModal() {
+      document.getElementById('add-camera-modal').classList.add('hidden');
+      document.getElementById('add-name').value = '';
+      document.getElementById('add-code').value = '';
+      document.getElementById('add-lng').value = '';
+      document.getElementById('add-lat').value = '';
+      showMapMask();
+    }
+
+    function addCameraByForm() {
+      const name = document.getElementById('add-name').value.trim();
+      const code = document.getElementById('add-code').value.trim();
+      const lng = parseFloat(document.getElementById('add-lng').value);
+      const lat = parseFloat(document.getElementById('add-lat').value);
+      const area = document.getElementById('add-area').value.trim();
+      const section = document.getElementById('add-section').value.trim();
+      const building = document.getElementById('add-building').value.trim();
+      const floor = document.getElementById('add-floor').value.trim();
+      const placeType = document.getElementById('add-placeType').value.trim();
+      const relativePlace = document.getElementById('add-relativePlace').value.trim();
+      const specificPlace = document.getElementById('add-specificPlace').value.trim();
+      const detail = document.getElementById('add-detail').value.trim();
+      if (!name) {
+        showNotification('请输入摄像头名称', 'error');
+        return;
+      }
+      if (isNaN(lng) || isNaN(lat)) {
+        showNotification('请输入有效的经度和纬度', 'error');
+        return;
+      }
+      cameraList.push({ name, code, lng, lat, area, section, building, floor, placeType, relativePlace, specificPlace, detail, status: 'online' });
+      updateCameraList();
+      updateMapMarkers();
+      closeAddCameraModal();
+      showNotification('摄像头添加成功', 'success');
+    }
+
+    // 文件处理
+    function processExcelFile(file) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+          const cameras = [];
+          for (let i = 1; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            if (row.length >= 3) {
+              let name = row[0];
+              if (typeof name !== 'string') {
+                name = String(name || `摄像头-${String(i).padStart(3, '0')}`);
+              }
+              name = name.trim();
+
+              const lng = parseFloat(row[1]);
+              const lat = parseFloat(row[2]);
+
+              if (!isNaN(lng) && !isNaN(lat)) {
+                cameras.push({
+                  name: name || `摄像头-${String(i).padStart(3, '0')}`,
+                  lng: lng,
+                  lat: lat,
+                  status: 'online'
+                });
+              }
+            }
+          }
+
+          if (cameras.length > 0) {
+            cameraList = cameras;
+            updateCameraList();
+            updateMapMarkers();
+            showNotification(`成功导入 ${cameras.length} 个摄像头`, 'success');
+          } else {
+            showNotification('Excel文件中没有找到有效的摄像头数据', 'error');
+          }
+        } catch (error) {
+          showNotification('Excel文件处理失败：' + error.message, 'error');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function processCSVFile(file) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const csvText = e.target.result;
+          const lines = csvText.split('\n');
+          const cameras = [];
+          // 假设表头顺序为：国标编码,平台镜头名称,区域,片区,建筑物,楼层,场所类型,相对场所位置信息,具体场所位置信息,细节备注,现场实际镜头名称,枪球类型,经度,纬度
+          for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            const columns = line.split(',').map(col => col.trim().replace(/^['"]|['"]$/g, ''));
+            if (columns.length >= 14) {
+              const [code, name, area, section, building, floor, placeType, relativePlace, specificPlace, detail, realName, type, lngStr, latStr] = columns;
+              const lng = parseFloat(lngStr);
+              const lat = parseFloat(latStr);
+              if (!isNaN(lng) && !isNaN(lat)) {
+                cameras.push({
+                  code, name, area, section, building, floor, placeType, relativePlace, specificPlace, detail, realName, type, lng, lat, status: 'online'
+                });
+              }
+            }
+          }
+          if (cameras.length > 0) {
+            cameraList = cameras;
+            updateCameraList();
+            updateMapMarkers();
+            showNotification(`成功导入 ${cameras.length} 个摄像头`, 'success');
+          } else {
+            showNotification('CSV文件中没有找到有效的摄像头数据', 'error');
+          }
+        } catch (error) {
+          showNotification('CSV文件处理失败：' + error.message, 'error');
+        }
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
+
+    // 通知系统
+    function showNotification(message, type = 'info') {
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 16px 24px;
+        background: ${type === 'success' ? 'rgba(34, 197, 94, 0.9)' : type === 'error' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(59, 130, 246, 0.9)'};
+        color: white;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 14px;
+        z-index: 9999;
+        backdrop-filter: blur(20px);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        transform: translateX(400px);
+        transition: transform 0.3s ease;
+      `;
+      notification.textContent = message;
+      document.body.appendChild(notification);
+
+      setTimeout(() => notification.style.transform = 'translateX(0)', 10);
+      setTimeout(() => {
+        notification.style.transform = 'translateX(400px)';
+        setTimeout(() => document.body.removeChild(notification), 300);
+      }, 3000);
+    }
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function() {
+      initMap();
+
+      // 添加示例摄像头
+      cameraList.push(
+        { name: "主入口监控", lat: 22.699, lng: 114.213, status: 'online' },
+        { name: "停车场监控", lat: 22.700, lng: 114.214, status: 'online' },
+        { name: "后门监控", lat: 22.698, lng: 114.212, status: 'maintenance' }
+      );
+      updateCameraList();
+      updateMapMarkers();
+
+      // 事件监听
+      document.getElementById('excel-upload').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) processExcelFile(file);
+      });
+
+      document.getElementById('csv-upload').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) processCSVFile(file);
+      });
+
+      // 滑块事件
+      const angleSlider = document.getElementById("angle-slider");
+      const radiusSlider = document.getElementById("radius-slider");
+      const angleValue = document.getElementById("angle-value");
+      const radiusValue = document.getElementById("radius-value");
+
+      angleSlider.addEventListener('input', function() {
+        angleValue.textContent = this.value + '°';
+        try {
+          if (currentCamera) {
+            const radius = parseInt(radiusSlider.value);
+            const angle = parseInt(this.value);
+            if (
+              isNaN(currentCamera.lat) || isNaN(currentCamera.lng) ||
+              isNaN(angle) || isNaN(radius)
+            ) return;
+            const conePoints = drawViewCone(currentCamera.lat, currentCamera.lng, 135, angle, radius);
+            const bounds = getBounds30m(currentCamera.lat, currentCamera.lng);
+            const totalBounds = getCombinedBounds(conePoints, bounds);
+            updateMapScreenshot(totalBounds);
+          }
+        } catch (e) {
+          console.error('角度滑块异常:', e);
+        }
+      });
+
+      radiusSlider.addEventListener('input', function() {
+        radiusValue.textContent = this.value + 'm';
+        try {
+          if (currentCamera) {
+            const angle = parseInt(angleSlider.value);
+            const radius = parseInt(this.value);
+            if (
+              isNaN(currentCamera.lat) || isNaN(currentCamera.lng) ||
+              isNaN(angle) || isNaN(radius)
+            ) return;
+            const conePoints = drawViewCone(currentCamera.lat, currentCamera.lng, 135, angle, radius);
+            const bounds = getBounds30m(currentCamera.lat, currentCamera.lng);
+            const totalBounds = getCombinedBounds(conePoints, bounds);
+            updateMapScreenshot(totalBounds);
+          }
+        } catch (e) {
+          console.error('距离滑块异常:', e);
+        }
+      });
+
+      // 图片上传预览
+      document.getElementById("camera-upload").onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById("camera-placeholder").style.display = "none";
+          document.getElementById("camera-preview").src = e.target.result;
+          document.getElementById("camera-preview").classList.remove("hidden");
+        };
+        reader.readAsDataURL(file);
+      };
+
+      document.getElementById("map-upload").onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById("map-preview").src = e.target.result;
+          document.getElementById("map-preview").classList.remove("hidden");
+        };
+        reader.readAsDataURL(file);
+      };
+
+           // 截图按钮
+           document.getElementById("screenshot-btn").onclick = function() {
+        if (!currentCamera) return;
+        const angle = parseInt(angleSlider.value);
+        const radius = parseInt(radiusSlider.value);
+        const conePoints = drawViewCone(currentCamera.lat, currentCamera.lng, 135, angle, radius);
+        const bounds = getBounds30m(currentCamera.lat, currentCamera.lng);
+        const totalBounds = getCombinedBounds(conePoints, bounds);
+        updateMapScreenshot(totalBounds);
+      };
+
+      // 分析按钮
+      document.getElementById("analyze-btn").onclick = function() {
+        const file = document.getElementById("camera-upload").files[0];
+        if (!file) {
+          showNotification("请上传摄像头画面", 'error');
+          return;
+        }
+        
+        // 显示加载状态
+        const analyzeBtn = document.getElementById("analyze-btn");
+        const originalText = analyzeBtn.textContent;
+        analyzeBtn.textContent = "分析中...";
+        analyzeBtn.classList.add("loading");
+        analyzeBtn.disabled = true;
+        
+        // 在抽屉中显示分析结果
+        document.getElementById("drawer-result-box").textContent = "🧠 AI正在分析中，请稍候...";
+        document.getElementById("ai-drawer").classList.add("open");
+        
+        document.getElementById("map-canvas").toBlob(blob => {
+          const formData = new FormData();
+          formData.append("camera_image", file);
+          formData.append("map_image", blob, "map.png");
+          formData.append("prompt", document.getElementById("prompt-text").value);
+          const model = document.getElementById("ai-model-select")?.value || "qwen";
+          formData.append("model", model);
+          
+          fetch("/analyze_camera", {
+            method: "POST",
+            body: formData
+          })
+          .then(res => res.json())
+          .then(data => {
+            const result = data.result || data.choices?.[0]?.message?.content || "模型未返回有效结果";
+            document.getElementById("result-box").innerHTML = marked.parse(result);
+            document.getElementById("drawer-result-box").innerHTML = marked.parse(result);
+          })
+          .catch(err => {
+            const errMsg = "分析失败: " + err.message;
+            document.getElementById("result-box").textContent = errMsg;
+            document.getElementById("drawer-result-box").textContent = errMsg;
+            showNotification(errMsg, 'error');
+          })
+          .finally(() => {
+            // 恢复按钮状态
+            analyzeBtn.textContent = originalText;
+            analyzeBtn.classList.remove("loading");
+            analyzeBtn.disabled = false;
+          });
+        }, "image/png");
+      };
+
+      // 保存按钮
+      document.getElementById("save-btn").onclick = function() {
+        if (!currentCamera) return;
+        
+        // 更新摄像头信息
+        currentCamera.name = document.getElementById('camera-name').value;
+        currentCamera.code = document.getElementById('camera-code').value;
+        
+        // 更新列表中的摄像头
+        cameraList[currentCamera.index] = { ...currentCamera };
+        delete cameraList[currentCamera.index].index;
+        
+        updateCameraList();
+        updateMapMarkers();
+        closeModal();
+        showNotification('摄像头信息已保存', 'success');
+      };
+
+      // AI分析抽屉控制
+      const drawer = document.getElementById("ai-drawer");
+      const toggleBtn = document.getElementById("toggle-analysis");
+      const closeBtn = document.getElementById("close-analysis");
+
+      if (toggleBtn) {
+        toggleBtn.addEventListener("click", () => {
+          drawer.classList.toggle("open");
+        });
+      }
+
+      if (closeBtn) {
+        closeBtn.addEventListener("click", () => {
+          drawer.classList.remove("open");
+        });
+      }
+
+      // 点击抽屉外部关闭
+      document.addEventListener('click', function(e) {
+        if (drawer.classList.contains('open') && 
+            !drawer.contains(e.target) && 
+            e.target !== toggleBtn) {
+          drawer.classList.remove('open');
+        }
+      });
+
+      // ESC键关闭抽屉和模态框
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+          if (drawer.classList.contains('open')) {
+            drawer.classList.remove('open');
+          }
+          if (!document.getElementById('ai-modal').classList.contains('hidden')) {
+            closeModal();
+          }
+          if (!document.getElementById('add-camera-modal').classList.contains('hidden')) {
+            closeAddCameraModal();
+          }
+        }
+      });
+
+      // 拖拽功能
+      if (typeof interact !== 'undefined') {
+        interact('#modal-content').draggable({
+          allowFrom: '.modal-header',
+          listeners: {
+            start: function(event) {
+              event.target.style.transition = 'none';
+            },
+            move: function(event) {
+              const target = event.target;
+              const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+              const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+              target.style.transform = `translate(${x}px, ${y}px)`;
+              target.setAttribute('data-x', x);
+              target.setAttribute('data-y', y);
+            },
+            end: function(event) {
+              event.target.style.transition = '';
+            }
+          }
+        });
+      }
+
+      // 移动端适配
+      function handleMobileLayout() {
+        const isMobile = window.innerWidth <= 768;
+        const sidebar = document.querySelector('.sidebar');
+        
+        if (isMobile) {
+          sidebar.classList.add('mobile-hidden');
+          // 添加移动端菜单按钮
+          if (!document.getElementById('mobile-menu-btn')) {
+            const menuBtn = document.createElement('button');
+            menuBtn.id = 'mobile-menu-btn';
+            menuBtn.className = 'control-btn';
+            menuBtn.style.cssText = `
+              position: fixed;
+              top: 20px;
+              left: 20px;
+              z-index: 31;
+              padding: 12px;
+            `;
+            menuBtn.innerHTML = `
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+              </svg>
+            `;
+            menuBtn.onclick = () => sidebar.classList.toggle('open');
+            document.body.appendChild(menuBtn);
+          }
+        } else {
+          sidebar.classList.remove('mobile-hidden', 'open');
+          const menuBtn = document.getElementById('mobile-menu-btn');
+          if (menuBtn) menuBtn.remove();
+        }
+      }
+
+      // 初始化移动端布局
+      handleMobileLayout();
+      window.addEventListener('resize', handleMobileLayout);
+
+      console.log('AI视觉监控系统初始化完成');
+
+      // 默认显示遮罩
+      showMapMask();
+    });
+
+    // 工具函数
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
+    function throttle(func, limit) {
+      let inThrottle;
+      return function() {
+        const args = arguments;
+        const context = this;
+        if (!inThrottle) {
+          func.apply(context, args);
+          inThrottle = true;
+          setTimeout(() => inThrottle = false, limit);
+        }
+      }
+    }
+
+    // 性能优化的滑块更新
+    const debouncedUpdateScreenshot = debounce(function(bounds) {
+      updateMapScreenshot(bounds);
+    }, 300);
+
+    // 导出功能
+    function exportCameraData() {
+      const dataStr = JSON.stringify(cameraList, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+      
+      const exportFileDefaultName = `摄像头数据_${new Date().toISOString().split('T')[0]}.json`;
+      
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+      
+      showNotification('摄像头数据已导出', 'success');
+    }
+
+    // 添加导出按钮到控制面板
+    function addExportButton() {
+      const controlPanel = document.querySelector('.control-panel');
+      const exportBtn = document.createElement('button');
+      exportBtn.className = 'control-btn';
+      exportBtn.innerHTML = `
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+        </svg>
+        导出数据
+      `;
+      exportBtn.onclick = exportCameraData;
+      controlPanel.appendChild(exportBtn);
+    }
+
+    // 页面加载完成后添加导出按钮
+    window.addEventListener('load', () => {
+      addExportButton();
+    });
+
+    // 全局错误处理
+    window.addEventListener('error', function(e) {
+      console.error('全局错误:', e.error);
+      showNotification('系统发生错误，请刷新页面重试', 'error');
+    });
+
+    // 网络状态监听
+    window.addEventListener('online', () => {
+      showNotification('网络连接已恢复', 'success');
+    });
+
+    window.addEventListener('offline', () => {
+      showNotification('网络连接已断开', 'error');
+    });
+
+    // 侧边栏聚焦时也隐藏遮罩
+    document.querySelector('.sidebar').addEventListener('mouseenter', hideMapMask);
+    document.querySelector('.sidebar').addEventListener('mouseleave', showMapMask);
+  </script>
+</body>
+</html>
+
